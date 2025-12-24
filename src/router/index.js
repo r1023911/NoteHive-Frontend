@@ -8,59 +8,64 @@ import PageRegister from '@/pages/Register.vue'
 import PageProfile from '@/pages/Profile.vue'
 import PageGraph from '@/pages/Graph.vue'
 
-
 import PageAdmin from '@/pages/admin/Admin.vue'
 import PageAdminView from '@/pages/admin/AdminView.vue'
 import PageAdminUsers from '@/pages/admin/AdminUsers.vue'
 
 // actual routes
 const routes = [
-    {
-        path: '/',
-        name: 'home',
-        component: PageHome
-    },
-    {
-        path: '/login',
-        name: 'login',
-        component: PageLogin
-    },
-    {
-        path: '/register',
-        name: 'register',
-        component: PageRegister
-    },
-    {
-        path: '/profile',
-        name: 'profile',
-        component: PageProfile
-    },
-    {
-        path: '/graph',
-        name: 'graph',
-        component: PageGraph
-    },
-
-    {
-        path: '/admin',
-        name: 'admin',
-        component: PageAdmin
-    },
-
-    {
+  {
+    path: '/',
+    name: 'home',
+    component: PageHome,
+    meta: { layout: 'blank' } // ✅ SIN sidebars
+  },
+  {
+    path: '/graph',
+    name: 'graph',
+    component: PageGraph,
+    meta: { layout: 'app' } // ✅ CON sidebars
+  },
+  {
+    path: '/login',
+    name: 'login',
+    component: PageLogin,
+    meta: { layout: 'blank' }
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: PageRegister,
+    meta: { layout: 'blank' }
+  },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: PageProfile,
+    meta: { layout: 'app' }
+  },
+  {
     path: '/admin',
     name: 'admin',
-    component: PageAdminView
-    },
-
-    {
-        path: '/admin/users',
-        name: 'admin-users',
-        component: PageAdminUsers
-    }
+    component: PageAdmin,
+    meta: { layout: 'app' }
+  },
+  {
+    path: '/admin/view',
+    name: 'admin-view',
+    component: PageAdminView,
+    meta: { layout: 'app' }
+  },
+  {
+    path: '/admin/users',
+    name: 'admin-users',
+    component: PageAdminUsers,
+    meta: { layout: 'app' }
+  }
 ]
 
+// Export because I will use this in main.js
 export const router = createRouter({
-    history: createWebHistory(),
-    routes
+  history: createWebHistory(),
+  routes
 })
