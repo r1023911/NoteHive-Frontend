@@ -203,7 +203,6 @@ onMounted(loadUsers)
         <div v-if="selectedUser()" class="card">
           <div class="card-title">Manage user</div>
 
-        
 
           <label class="label">Username</label>
           <input class="input" v-model="username" type="text" />

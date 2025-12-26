@@ -28,6 +28,10 @@ const vaultError = ref("")
 const notes = ref([])
 const notesError = ref("")
 
+const inbox = ref([])
+const inboxError = ref("")
+
+
 
 const isAuthPage = computed(() => route.meta?.layout === "blank")
 
@@ -53,7 +57,6 @@ function persistActiveVault() {
   }
 }
 
-// devuelve { ok, status, data/text } para mostrar errores bien
 async function fetchAny(url, options = {}) {
   const token = localStorage.getItem("token") || ""
 
@@ -140,6 +143,23 @@ async function loadNotes() {
   }
 }
 
+async function loadInbox() {
+  inboxError.value = ""
+  inbox.value = []
+
+  if (!user.value) return
+
+  try {
+    const data = await fetchAny(
+      `http://localhost:3000/inbox?userId=${user.value.id}`
+    )
+    inbox.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    inboxError.value = e.message
+  }
+}
+
+
 function openNote(n) {
   if (!n) return
   window.dispatchEvent(new CustomEvent("open-note", { detail: { noteId: n.id } }))
@@ -211,14 +231,30 @@ onMounted(async () => {
   const stored = Number(localStorage.getItem("activeVaultId") || 0)
   if (stored) activeVaultId.value = stored
 
-  if (user.value) await loadVaults()
+  if (user.value) {
+    await loadVaults()
+    //await loadInbox()
+  }
+
 
   window.addEventListener("notehive-auth-changed", onAuthChanged)
   window.addEventListener("notes-changed", loadNotes)
+
+  //window.addEventListener("inbox-changed", loadInbox)
+
+  window.addEventListener("notehive-auth-changed", async () => {
+    readUser()
+    await loadVaults()
+    //await loadInbox()
+  })
+
+
 })
 onUnmounted(() => {
   window.removeEventListener("notehive-auth-changed", onAuthChanged)
   window.removeEventListener("notes-changed", loadNotes)
+  window.removeEventListener("inbox-changed", loadInbox)
+
 })
 
 
@@ -312,6 +348,37 @@ onUnmounted(() => {
         <div class="hive-title">NoteHive</div>
         <div class="hive-sub">Back to the hive</div>
       </button>
+
+      <div class="inbox-box">
+        <div class="inbox-title">
+          Inbox
+          <span class="inbox-count">{{ inbox.length }}</span>
+        </div>
+
+        <div v-if="inboxError" class="error">
+          {{ inboxError }}
+        </div>
+
+        <div v-if="inbox.length === 0 && !inboxError" class="empty-vault">
+          No shared notes
+        </div>
+
+        <div v-else class="inbox-list">
+          <button
+            v-for="s in inbox"
+            :key="s.id"
+            class="inbox-item"
+            type="button"
+            @click="$router.push('/graph'); openNote({ id: s.noteId })"
+          >
+            <div class="inbox-item-title">{{ s.title || "Untitled" }}</div>
+            <div class="inbox-item-meta">
+              From: {{ s.fromUsername || s.fromEmail || "unknown" }}
+            </div>
+          </button>
+        </div>
+      </div>
+
 
       <div class="welcome">
         <div class="welcome-user">{{ username }}</div>
@@ -613,6 +680,73 @@ html, body, #app {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.inbox-box {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 2px solid rgba(165, 110, 16, 0.55);
+  background: rgba(240, 191, 85, 0.25);
+}
+
+.inbox-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 950;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.inbox-count {
+  font-size: 12px;
+  font-weight: 950;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 2px solid rgba(165, 110, 16, 0.55);
+  background: rgba(240, 191, 85, 0.55);
+}
+
+.inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inbox-item {
+  width: 100%;
+  text-align: left;
+  border: 2px solid rgba(165, 110, 16, 0.55);
+  background: rgba(240, 191, 85, 0.5);
+  border-radius: 14px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: #2a1f0f;
+  font: inherit;
+}
+
+.inbox-item:hover {
+  background: rgba(201, 137, 30, 0.35);
+}
+
+.inbox-item-title {
+  font-weight: 950;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-item-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 

@@ -1,4 +1,3 @@
-// import createRouter and createWebHistory from the package vue-router
 import { createRouter, createWebHistory } from 'vue-router'
 
 // import the pages to be used in the router
@@ -55,7 +54,6 @@ const routes = [
 
 ]
 
-// Export because I will use this in main.js
 export const router = createRouter({
   history: createWebHistory(),
   routes
