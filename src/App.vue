@@ -1,42 +1,294 @@
-<!-- Script -->
 <script setup>
-import { RouterView, useRoute } from 'vue-router'
-import { computed } from 'vue'
+import { RouterView, useRoute, useRouter } from "vue-router"
+import { computed, onMounted, onUnmounted, ref } from "vue"
+
 
 const route = useRoute()
+const router = useRouter()
 
-const showLayout = computed(() => route.meta.layout !== 'blank')
+const user = ref(null)
+
+const vaults = ref([])
+const activeVaultId = ref(null)
+
+const newVaultName = ref("")
+const vaultError = ref("")
+
+const notes = ref([])
+const notesError = ref("")
+
+
+const isAuthPage = computed(() => route.path === "/" || route.path === "/home")
+
+function readUser() {
+  try {
+    user.value = JSON.parse(localStorage.getItem("user") || "null")
+  } catch {
+    user.value = null
+  }
+}
+
+function persistActiveVault() {
+  if (activeVaultId.value) {
+    localStorage.setItem("activeVaultId", String(activeVaultId.value))
+  } else {
+    localStorage.removeItem("activeVaultId")
+  }
+}
+
+// devuelve { ok, status, data/text } para mostrar errores bien
+async function fetchAny(url, options = {}) {
+  const token = localStorage.getItem("token") || ""
+
+  const headers = {
+    ...(options.headers || {}),
+  }
+
+  if (token && !headers.Authorization) {
+    headers.Authorization = "Bearer " + token
+  }
+
+  const res = await fetch(url, {
+    ...options,
+    headers,
+  })
+
+  const text = await res.text()
+  let data = null
+  try {
+    data = JSON.parse(text)
+  } catch {
+    data = null
+  }
+
+  if (!res.ok) {
+    const msg =
+      (data && (data.error || data.message)) ||
+      text ||
+      `HTTP ${res.status}`
+    throw new Error(`HTTP ${res.status}: ${msg}`)
+  }
+
+  return data ?? {}
+}
+
+
+async function loadVaults() {
+  vaultError.value = ""
+  if (!user.value) return
+
+  try {
+    const data = await fetchAny(
+      `http://localhost:3000/vaults?ownerId=${user.value.id}`
+    )
+
+    vaults.value = Array.isArray(data) ? data : []
+
+    const stored = Number(localStorage.getItem("activeVaultId") || 0)
+
+    if (vaults.value.length > 0) {
+      const stillExists = stored && vaults.value.some(v => v.id === stored)
+
+      if (stillExists) {
+        activeVaultId.value = stored
+      } else if (!activeVaultId.value) {
+        activeVaultId.value = vaults.value[0].id
+      }
+    } else {
+      activeVaultId.value = null
+    }
+
+    persistActiveVault()
+    await loadNotes()
+
+  } catch (e) {
+    vaultError.value = e.message
+  }
+}
+
+
+async function loadNotes() {
+  notesError.value = ""
+  notes.value = []
+
+  if (!user.value || !activeVaultId.value) return
+
+  try {
+    const data = await fetchAny(
+      `http://localhost:3000/notes?vaultId=${activeVaultId.value}`
+    )
+    notes.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    notesError.value = e.message
+  }
+}
+
+function openNote(n) {
+  if (!n) return
+  window.dispatchEvent(new CustomEvent("open-note", { detail: { noteId: n.id } }))
+}
+
+
+async function addVault() {
+  vaultError.value = ""
+  if (!newVaultName.value.trim()) return
+  if (!user.value) return
+
+  try {
+    await fetchAny("http://localhost:3000/vaults", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newVaultName.value.trim(),
+        ownerId: user.value.id,
+      }),
+    })
+
+    newVaultName.value = ""
+    await loadVaults()
+  } catch (e) {
+    vaultError.value = e.message
+  }
+}
+
+async function deleteVault(vaultId) {
+  vaultError.value = ""
+  const v = vaults.value.find((x) => x.id === vaultId)
+  const name = v ? v.name : "this vault"
+
+  if (!confirm(`Delete "${name}"? This will delete its notes too.`)) return
+
+  try {
+    await fetchAny(`http://localhost:3000/vaults/${vaultId}`, {
+      method: "DELETE",
+    })
+
+    if (activeVaultId.value === vaultId) activeVaultId.value = null
+    persistActiveVault()
+    await loadVaults()
+  } catch (e) {
+    vaultError.value = e.message
+  }
+}
+
+function logout() {
+  localStorage.removeItem("token")
+  localStorage.removeItem("user")
+  localStorage.removeItem("role")
+  localStorage.removeItem("activeVaultId")
+  user.value = null
+  vaults.value = []
+  activeVaultId.value = null
+  router.push("/")
+}
+
+onMounted(async () => {
+  readUser()
+
+  const stored = Number(localStorage.getItem("activeVaultId") || 0)
+  if (stored) activeVaultId.value = stored
+
+  if (user.value) await loadVaults()
+
+  window.addEventListener("notes-changed", loadNotes)
+})
+onUnmounted(() => {
+  window.removeEventListener("notes-changed", loadNotes)
+})
+
 </script>
 
-<!-- Template -->
 <template>
-  <!-- Páginas sin layout (Home / Login / Register) -->
-  <RouterView v-if="!showLayout" />
+  <div v-if="isAuthPage" class="full">
+    <RouterView />
+  </div>
 
-  <!-- Páginas con layout -->
   <div v-else class="layout">
-    <!-- LEFT SIDEBAR -->
+    <!-- LEFT -->
     <aside class="sidebar left">
       <div class="sidebar-title">Vault</div>
 
-      <div class="empty-vault">
-        No notes yet
+      <div v-if="vaultError" class="error">
+        {{ vaultError }}
       </div>
+
+      <div class="vault-picker">
+        <select
+          v-model="activeVaultId"
+          class="select"
+          :disabled="vaults.length === 0"
+          @change="persistActiveVault(); loadNotes()"
+
+        >
+          <option v-for="v in vaults" :key="v.id" :value="v.id">
+            {{ v.name }}
+          </option>
+        </select>
+
+        <button
+          class="trash"
+          :disabled="!activeVaultId"
+          @click="deleteVault(activeVaultId)"
+          title="Delete vault"
+        >
+          🗑
+        </button>
+      </div>
+
+      <div class="new-vault">
+        <input
+          class="input"
+          v-model="newVaultName"
+          placeholder="New vault..."
+        />
+        <button class="btn" @click="addVault">Add</button>
+      </div>
+
+      <div class="notes-title">Notes</div>
+
+        <div class="notes-box">
+          <div v-if="notesError" class="error">
+            {{ notesError }}
+          </div>
+
+          <div v-if="notes.length === 0 && !notesError" class="empty-vault">
+            No notes yet
+          </div>
+
+          <div v-else class="notes-list">
+            <button
+              v-for="n in notes"
+              :key="n.id"
+              class="note-item"
+              type="button"
+              @click="openNote(n)"
+            >
+              {{ n.title || "Untitled" }}
+            </button>
+          </div>
+        </div>
+
+
+
+        <div class="empty-vault" v-if="vaults.length === 0 && !vaultError">
+          No vaults yet
+      </div>
+
     </aside>
 
     <!-- CENTER -->
     <main class="main">
-      <RouterView />
+      <RouterView :activeVaultId="activeVaultId" />
     </main>
 
-    <!-- RIGHT SIDEBAR -->
+    <!-- RIGHT -->
     <aside class="sidebar right">
       <div class="sidebar-title">Profile</div>
 
       <div class="section">
         <div class="section-title">Account</div>
-        <div class="item">Username</div>
-        <div class="item">Logout</div>
+        <div class="item">{{ user?.username || "Username" }}</div>
+        <div class="item" @click="logout">Logout</div>
       </div>
 
       <div class="section">
@@ -49,7 +301,6 @@ const showLayout = computed(() => route.meta.layout !== 'blank')
   </div>
 </template>
 
-<!-- Style -->
 <style>
 html, body, #app {
   height: 100%;
@@ -60,19 +311,23 @@ html, body, #app {
   color: #2a1f0f;
 }
 
-/* layout */
+.full {
+  height: 100vh;
+}
+
+/* ⬇️ sidebar izquierda más grande */
 .layout {
   height: 100vh;
   display: grid;
-  grid-template-columns: 280px 1fr 280px;
+  grid-template-columns: 340px 1fr 280px;
 }
 
-/* sidebars */
 .sidebar {
   padding: 18px;
   background: #e1a93a;
   border-right: 3px solid #a56e10;
   overflow: auto;
+  overflow-x: hidden;
 }
 
 .sidebar.right {
@@ -80,7 +335,6 @@ html, body, #app {
   border-left: 3px solid #a56e10;
 }
 
-/* titles */
 .sidebar-title {
   font-weight: 800;
   font-size: 20px;
@@ -88,15 +342,6 @@ html, body, #app {
   color: #3a250c;
 }
 
-/* empty vault */
-.empty-vault {
-  font-size: 15px;
-  opacity: 0.8;
-  font-style: italic;
-  margin-top: 8px;
-}
-
-/* sections */
 .section {
   margin-top: 18px;
 }
@@ -109,7 +354,6 @@ html, body, #app {
   letter-spacing: 0.06em;
 }
 
-/* items */
 .item {
   padding: 10px 12px;
   border-radius: 12px;
@@ -122,10 +366,135 @@ html, body, #app {
   background: #c9891e;
 }
 
-/* main area (centro) */
 .main {
   background: #f0bf55;
   padding: 0;
   overflow: hidden;
 }
+
+.empty-vault {
+  font-size: 15px;
+  opacity: 0.8;
+  font-style: italic;
+  margin-top: 10px;
+}
+
+/* vault ui */
+.vault-picker {
+  display: grid;
+  grid-template-columns: 1fr 44px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.select {
+  border: 2px solid rgba(165, 110, 16, 0.7);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(240, 191, 85, 0.65);
+  font-weight: 800;
+  color: #2a1f0f;
+}
+
+.trash {
+  border: 2px solid rgba(165, 110, 16, 0.7);
+  border-radius: 12px;
+  background: rgba(200, 60, 30, 0.22);
+  cursor: pointer;
+  height: 42px;
+  font-size: 22px;
+}
+
+.trash:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.new-vault {
+  display: grid;
+  grid-template-columns: 1fr 84px;
+  gap: 8px;
+}
+
+.input {
+  border: 2px solid rgba(165, 110, 16, 0.65);
+  background: rgba(240, 191, 85, 0.65);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 16px;
+  outline: none;
+  color: #2a1f0f;
+}
+
+.btn {
+  border: 3px solid #a56e10;
+  background: rgba(201, 137, 30, 0.9);
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 900;
+  color: #2a1f0f;
+}
+
+.error {
+  margin: 6px 0 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 2px solid rgba(120, 20, 20, 0.5);
+  background: rgba(200, 60, 30, 0.18);
+  font-weight: 800;
+  word-break: break-word;
+}
+
+.notes-box {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 2px solid rgba(165, 110, 16, 0.7);
+  background: rgba(240, 191, 85, 0.35);
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-item {
+  width: 100%;
+  text-align: left;
+  box-sizing: border-box;
+
+  border: 2px solid rgba(165, 110, 16, 0.7);
+  background: rgba(240, 191, 85, 0.65);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 800;
+  color: #2a1f0f;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-item:hover {
+  background: rgba(201, 137, 30, 0.55);
+}
+
+.notes-title {
+  margin-top: 18px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 900;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(201, 137, 30, 0.35);
+  border: 2px solid rgba(165, 110, 16, 0.7);
+  color: #3a250c;
+}
+
+
 </style>

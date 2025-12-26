@@ -3,8 +3,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 // import the pages to be used in the router
 import PageHome from '@/pages/Home.vue'
-import PageLogin from '@/pages/Login.vue'
-import PageRegister from '@/pages/Register.vue'
 import PageProfile from '@/pages/Profile.vue'
 import PageGraph from '@/pages/Graph.vue'
 
@@ -26,18 +24,7 @@ const routes = [
     component: PageGraph,
     meta: { layout: 'app' } // ✅ CON sidebars
   },
-  {
-    path: '/login',
-    name: 'login',
-    component: PageLogin,
-    meta: { layout: 'blank' }
-  },
-  {
-    path: '/register',
-    name: 'register',
-    component: PageRegister,
-    meta: { layout: 'blank' }
-  },
+  
   {
     path: '/profile',
     name: 'profile',
