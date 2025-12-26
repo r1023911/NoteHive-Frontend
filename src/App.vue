@@ -1,6 +1,6 @@
 <script setup>
 import { RouterView, useRoute, useRouter } from "vue-router"
-import { computed, onMounted, onUnmounted, ref } from "vue"
+import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 
 
 const route = useRoute()
@@ -8,8 +8,19 @@ const router = useRouter()
 
 const user = ref(null)
 
+//right sidebar text
+const username = computed(() => user.value?.username || "Username")
+const slogan = computed(() => `Enjoy building your hive!`)
+
+
 const vaults = ref([])
 const activeVaultId = ref(null)
+
+watch(activeVaultId, async () => {
+  persistActiveVault()
+  await loadNotes()
+})
+
 
 const newVaultName = ref("")
 const vaultError = ref("")
@@ -18,7 +29,7 @@ const notes = ref([])
 const notesError = ref("")
 
 
-const isAuthPage = computed(() => route.path === "/" || route.path === "/home")
+const isAuthPage = computed(() => route.meta?.layout === "blank")
 
 function readUser() {
   try {
@@ -27,6 +38,12 @@ function readUser() {
     user.value = null
   }
 }
+
+async function onAuthChanged() {
+  readUser()
+  await loadVaults()
+}
+
 
 function persistActiveVault() {
   if (activeVaultId.value) {
@@ -179,6 +196,12 @@ function logout() {
   user.value = null
   vaults.value = []
   activeVaultId.value = null
+
+  notes.value = []
+  notesError.value = ""
+  vaultError.value = ""
+
+
   router.push("/")
 }
 
@@ -190,11 +213,14 @@ onMounted(async () => {
 
   if (user.value) await loadVaults()
 
+  window.addEventListener("notehive-auth-changed", onAuthChanged)
   window.addEventListener("notes-changed", loadNotes)
 })
 onUnmounted(() => {
+  window.removeEventListener("notehive-auth-changed", onAuthChanged)
   window.removeEventListener("notes-changed", loadNotes)
 })
+
 
 </script>
 
@@ -217,8 +243,7 @@ onUnmounted(() => {
           v-model="activeVaultId"
           class="select"
           :disabled="vaults.length === 0"
-          @change="persistActiveVault(); loadNotes()"
-
+          
         >
           <option v-for="v in vaults" :key="v.id" :value="v.id">
             {{ v.name }}
@@ -283,21 +308,29 @@ onUnmounted(() => {
 
     <!-- RIGHT -->
     <aside class="sidebar right">
-      <div class="sidebar-title">Profile</div>
+      <button class="hive-btn" @click="router.push('/graph')">
+        <div class="hive-title">NoteHive</div>
+        <div class="hive-sub">Back to the hive</div>
+      </button>
 
-      <div class="section">
-        <div class="section-title">Account</div>
-        <div class="item">{{ user?.username || "Username" }}</div>
-        <div class="item" @click="logout">Logout</div>
+      <div class="welcome">
+        <div class="welcome-user">{{ username }}</div>
+        <div class="welcome-line">{{ slogan }}</div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Settings</div>
-        <div class="item">Theme</div>
-        <div class="item">Shortcuts</div>
-        <div class="item">Sync</div>
+      <div class="bottom-actions">
+        <button class="action-btn" @click="router.push('/profile')">
+          Settings
+        </button>
+
+        <button class="action-btn danger" @click="logout">
+          Logout
+        </button>
       </div>
     </aside>
+
+
+
   </div>
 </template>
 
@@ -328,7 +361,11 @@ html, body, #app {
   border-right: 3px solid #a56e10;
   overflow: auto;
   overflow-x: hidden;
+
+  display: flex;
+  flex-direction: column;
 }
+
 
 .sidebar.right {
   border-right: none;
@@ -494,6 +531,88 @@ html, body, #app {
   background: rgba(201, 137, 30, 0.35);
   border: 2px solid rgba(165, 110, 16, 0.7);
   color: #3a250c;
+}
+
+.welcome {
+  padding: 12px 8px;
+  text-align: center;
+}
+
+
+.welcome-user {
+  font-size: 25px;
+  font-weight: 950;
+  color: #2a1f0f;
+}
+
+.welcome-line {
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 800;
+  opacity: 0.9;
+}
+
+.action-btn {
+  width: 100%;
+  margin-top: 12px;
+  border: 3px solid #a56e10;
+  background: rgba(240, 191, 85, 0.65);
+  border-radius: 14px;
+  padding: 12px 12px;
+  cursor: pointer;
+  font-weight: 950;
+  font-size: 16px;
+  color: #2a1f0f;
+}
+
+.action-btn:hover {
+  background: rgba(201, 137, 30, 0.55);
+}
+
+.action-btn.danger {
+  background: rgba(200, 60, 30, 0.22);
+}
+
+.action-btn.danger:hover {
+  background: rgba(200, 60, 30, 0.32);
+}
+
+.hive-btn {
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 16px 12px;
+  border-radius: 18px;
+  border: 3px solid #a56e10;
+  background: rgba(201, 137, 30, 0.85);
+  cursor: pointer;
+  text-align: center;
+}
+
+.hive-btn:hover {
+  filter: brightness(1.05);
+}
+
+.hive-title {
+  font-size: 26px;
+  font-weight: 1000;
+  letter-spacing: 0.04em;
+  color: #2a1f0f;
+}
+
+.hive-sub {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.bottom-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 

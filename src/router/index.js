@@ -6,6 +6,7 @@ import PageHome from '@/pages/Home.vue'
 import PageProfile from '@/pages/Profile.vue'
 import PageGraph from '@/pages/Graph.vue'
 
+
 import PageAdmin from '@/pages/admin/Admin.vue'
 import PageAdminView from '@/pages/admin/AdminView.vue'
 import PageAdminUsers from '@/pages/admin/AdminUsers.vue'
@@ -16,13 +17,13 @@ const routes = [
     path: '/',
     name: 'home',
     component: PageHome,
-    meta: { layout: 'blank' } // ✅ SIN sidebars
+    meta: { layout: 'blank' } 
   },
   {
     path: '/graph',
     name: 'graph',
     component: PageGraph,
-    meta: { layout: 'app' } // ✅ CON sidebars
+    meta: { layout: 'app' }
   },
   
   {
@@ -41,14 +42,17 @@ const routes = [
     path: '/admin/view',
     name: 'admin-view',
     component: PageAdminView,
-    meta: { layout: 'app' }
+    meta: { layout: 'blank' }
   },
+
+
   {
     path: '/admin/users',
     name: 'admin-users',
     component: PageAdminUsers,
-    meta: { layout: 'app' }
+    meta: { layout: 'blank' }
   }
+
 ]
 
 // Export because I will use this in main.js

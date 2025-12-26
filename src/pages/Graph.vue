@@ -162,26 +162,50 @@ function draw() {
   ctx.strokeStyle = 'rgba(165,110,16,0.35)'
 
   for (let r = minR; r <= maxR; r++) {
-    for (let q = minQ; q <= maxQ; q++) {
-      const p = axialToPixel(q, r)
-      const corners = hexCorners(p.x, p.y)
+  for (let q = minQ; q <= maxQ; q++) {
+    const p = axialToPixel(q, r)
+    const corners = hexCorners(p.x, p.y)
 
-      ctx.beginPath()
-      ctx.moveTo(corners[0].x, corners[0].y)
-      for (let i = 1; i < 6; i++) ctx.lineTo(corners[i].x, corners[i].y)
-      ctx.closePath()
+    ctx.beginPath()
+    ctx.moveTo(corners[0].x, corners[0].y)
+    for (let i = 1; i < 6; i++) ctx.lineTo(corners[i].x, corners[i].y)
+    ctx.closePath()
+
+    const k = keyOf(q, r)
+    const n = notesByHex.value[k]
+    const occupied =
+      n && ((n.title && n.title.trim() !== "") || (n.content && n.content.trim() !== ""))
+
+    if (occupied) {
+      ctx.fillStyle = "#FF7A1A"
+      ctx.fill()
+
+      ctx.save()
+      ctx.strokeStyle = "rgba(42,31,15,0.85)"
+      ctx.lineWidth = 3 / camS
       ctx.stroke()
+      ctx.restore()
 
-      const k = keyOf(q, r)
-      const n = notesByHex.value[k]
-      if (n && ((n.title && n.title.trim() !== '') || (n.content && n.content.trim() !== ''))) {
-        ctx.fillStyle = 'rgba(42,31,15,0.55)'
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, 4 / camS, 0, Math.PI * 2)
-        ctx.fill()
+      if (camS >= 0.98) {
+        const rawTitle = (n.title || "").trim()
+        if (rawTitle) {
+          const title = rawTitle.length > 14 ? rawTitle.slice(0, 14) + "…" : rawTitle
+          ctx.save()
+          ctx.fillStyle = "rgba(42,31,15,0.95)"
+          ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial"
+          ctx.textAlign = "center"
+          ctx.textBaseline = "middle"
+          ctx.fillText(title, p.x, p.y)
+
+          ctx.restore()
+        }
       }
+    } else {
+      ctx.stroke()
     }
   }
+}
+
 
   if (hover) {
     const p = axialToPixel(hover.q, hover.r)

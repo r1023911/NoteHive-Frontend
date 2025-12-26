@@ -99,7 +99,8 @@
       localStorage.setItem('role', data.role || 'user')
 
       window.dispatchEvent(new Event('notehive-auth-changed'))
-      router.push('/graph')
+      router.push((data.role || 'user') === 'admin' ? '/admin/view' : '/graph')
+
     } catch (e) {
       const msg = String(e.message || '')
 
@@ -177,7 +178,8 @@
         localStorage.setItem('role', data.role || 'user')
 
         window.dispatchEvent(new Event('notehive-auth-changed'))
-        router.push('/graph')
+        router.push((data.role || 'user') === 'admin' ? '/admin/view' : '/graph')
+
         return
       }
 
