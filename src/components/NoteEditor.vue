@@ -1,12 +1,14 @@
 <script setup>
 const props = defineProps({
   openKey: { type: String, default: "" },
+  noteId: { type: Number, default: null },
   title: { type: String, default: "" },
   content: { type: String, default: "" },
+  color: { type: String, default: "#FF7A1A" },
   canSave: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(["update:title", "update:content", "save", "back", "delete"])
+const emit = defineEmits(["update:title", "update:content", "update:color", "save", "back", "delete", "share"])
 
 </script>
 
@@ -16,16 +18,32 @@ const emit = defineEmits(["update:title", "update:content", "save", "back", "del
       <div class="note-left">
         <div class="note-coord">Note @ {{ openKey }}</div>
 
-        <input
-          class="note-title-input"
-          :value="title"
-          placeholder="Title..."
-          @input="emit('update:title', $event.target.value)"
-        />
+        <div class="note-title-row">
+          <input
+            class="note-title-input"
+            :value="title"
+            placeholder="Title..."
+            @input="emit('update:title', $event.target.value)"
+          />
+
+          <input
+            class="note-color-input"
+            type="color"
+            :value="color"
+            title="Cell color"
+            @input="emit('update:color', $event.target.value)"
+          />
+        </div>
       </div>
 
         <div class="note-actions">
             <button class="btn danger" @click="emit('delete')">Delete</button>
+            <button
+              class="btn"
+              :disabled="!noteId"
+              title="Save the note before sharing"
+              @click="emit('share')"
+            >Share</button>
             <button class="btn" :disabled="!canSave" @click="emit('save')">Save</button>
             <button class="btn ghost" @click="emit('back')">Back</button>
         </div>
@@ -72,7 +90,14 @@ const emit = defineEmits(["update:title", "update:content", "save", "back", "del
   color: #2a1f0f;
 }
 
+.note-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .note-title-input {
+  flex: 1;
   border: 3px solid rgba(165, 110, 16, 0.7);
   background: rgba(242, 211, 138, 0.75);
   border-radius: 12px;
@@ -81,6 +106,17 @@ const emit = defineEmits(["update:title", "update:content", "save", "back", "del
   outline: none;
   color: #2a1f0f;
   font-weight: 800;
+}
+
+.note-color-input {
+  width: 42px;
+  height: 42px;
+  padding: 2px;
+  border: 3px solid rgba(165, 110, 16, 0.7);
+  border-radius: 12px;
+  background: rgba(242, 211, 138, 0.75);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .note-actions {

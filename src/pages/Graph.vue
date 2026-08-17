@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import NoteEditor from '@/components/NoteEditor.vue'
+import { pendingPlacement } from '@/pendingPlacement'
 
 const props = defineProps({
   activeVaultId: {
@@ -32,13 +33,37 @@ const SQRT3 = Math.sqrt(3)
 
 let hover = null
 
+const hexColors = ref({
+  background: 'rgba(240,191,85,1)',
+  emptyStroke: 'rgba(165,110,16,0.35)',
+  occupiedFill: '#FF7A1A',
+  occupiedStroke: 'rgba(42,31,15,0.85)',
+  text: 'rgba(42,31,15,0.95)',
+  hoverFill: 'rgba(201,137,30,0.22)',
+  hoverStroke: 'rgba(165,110,16,0.9)'
+})
+
 const notesByHex = ref({})
 const notesList = ref([])
 const openKey = ref(null)
 
 const noteTitle = ref('')
 const noteText = ref('')
+const noteColor = ref('#FF7A1A')
 const openNoteId = ref(null)
+
+const placingNote = ref(null)
+
+watch(
+  pendingPlacement,
+  (val) => {
+    if (val) {
+      placingNote.value = val
+      pendingPlacement.value = null
+    }
+  },
+  { immediate: true }
+)
 
 const vaultId = computed(() => Number(props.activeVaultId || 0))
 const canSave = computed(() => noteTitle.value.trim().length > 0)
@@ -139,7 +164,7 @@ function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, w, h)
 
-  ctx.fillStyle = 'rgba(240,191,85,1)'
+  ctx.fillStyle = hexColors.value.background
   ctx.fillRect(0, 0, w, h)
 
   ctx.translate(camX, camY)
@@ -159,7 +184,7 @@ function draw() {
   let maxR = Math.max(a1.r, a2.r, a3.r, a4.r) + 10
 
   ctx.lineWidth = 2 / camS
-  ctx.strokeStyle = 'rgba(165,110,16,0.35)'
+  ctx.strokeStyle = hexColors.value.emptyStroke
 
   for (let r = minR; r <= maxR; r++) {
   for (let q = minQ; q <= maxQ; q++) {
@@ -177,11 +202,11 @@ function draw() {
       n && ((n.title && n.title.trim() !== "") || (n.content && n.content.trim() !== ""))
 
     if (occupied) {
-      ctx.fillStyle = "#FF7A1A"
+      ctx.fillStyle = n.color || hexColors.value.occupiedFill
       ctx.fill()
 
       ctx.save()
-      ctx.strokeStyle = "rgba(42,31,15,0.85)"
+      ctx.strokeStyle = hexColors.value.occupiedStroke
       ctx.lineWidth = 3 / camS
       ctx.stroke()
       ctx.restore()
@@ -191,7 +216,7 @@ function draw() {
         if (rawTitle) {
           const title = rawTitle.length > 14 ? rawTitle.slice(0, 14) + "…" : rawTitle
           ctx.save()
-          ctx.fillStyle = "rgba(42,31,15,0.95)"
+          ctx.fillStyle = hexColors.value.text
           ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial"
           ctx.textAlign = "center"
           ctx.textBaseline = "middle"
@@ -211,8 +236,8 @@ function draw() {
     const p = axialToPixel(hover.q, hover.r)
     const corners = hexCorners(p.x, p.y)
 
-    ctx.fillStyle = 'rgba(201,137,30,0.22)'
-    ctx.strokeStyle = 'rgba(165,110,16,0.9)'
+    ctx.fillStyle = hexColors.value.hoverFill
+    ctx.strokeStyle = hexColors.value.hoverStroke
     ctx.lineWidth = 3 / camS
 
     ctx.beginPath()
@@ -259,8 +284,96 @@ function onMouseMove(e) {
   camY += dy
 }
 
-function onMouseUp() {
+function onMouseUp(e) {
   dragging = false
+
+  if (placingNote.value && !moved && !openKey.value && viewport.value) {
+    const rect = viewport.value.getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+
+    if (sx >= 0 && sy >= 0 && sx <= rect.width && sy <= rect.height) {
+      const wpos = screenToWorld(sx, sy)
+      const a = pixelToAxial(wpos.x, wpos.y)
+      placeSharedNoteAt(a.q, a.r)
+    }
+  }
+}
+
+async function placeSharedNoteAt(q, r) {
+  if (!placingNote.value) return
+
+  const token = localStorage.getItem("token") || ""
+  if (!token) {
+    alert("Missing token. Login again.")
+    return
+  }
+
+  if (!vaultId.value) {
+    alert("No vault selected.")
+    return
+  }
+
+  if (!ownerId.value) {
+    alert("Missing ownerId (user not loaded). Login again.")
+    return
+  }
+
+  const k = keyOf(q, r)
+  if (notesByHex.value[k]) {
+    alert("That cell already has a note. Pick an empty one.")
+    return
+  }
+
+  const payload = {
+    title: placingNote.value.title || "Untitled",
+    content: placingNote.value.content || "",
+    color: placingNote.value.color || undefined,
+    ownerId: ownerId.value,
+    vaultId: vaultId.value,
+    hexKey: k
+  }
+
+  try {
+    const res = await fetch("http://localhost:3000/notes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify(payload)
+    })
+
+    const data = await res.json().catch(() => ({}))
+
+    if (!res.ok) {
+      alert(data?.error || "Failed to place note")
+      return
+    }
+
+    const shareId = placingNote.value.shareId
+    placingNote.value = null
+    await fetchNotes()
+    window.dispatchEvent(new Event("notes-changed"))
+
+    if (shareId) {
+      try {
+        await fetch(`http://localhost:3000/shares/${shareId}`, {
+          method: "DELETE",
+          headers: { Authorization: "Bearer " + token }
+        })
+        window.dispatchEvent(new Event("inbox-changed"))
+      } catch {
+        // placement already succeeded; inbox cleanup failure is non-fatal
+      }
+    }
+  } catch (err) {
+    alert("Network/server error")
+  }
+}
+
+function cancelPlacing() {
+  placingNote.value = null
 }
 
 function onWheel(e) {
@@ -284,7 +397,7 @@ function onWheel(e) {
 }
 
 function onDblClick(e) {
-  if (!viewport.value || openKey.value) return
+  if (!viewport.value || openKey.value || placingNote.value) return
   if (moved) return
 
   const rect = viewport.value.getBoundingClientRect()
@@ -302,10 +415,12 @@ function onDblClick(e) {
     openNoteId.value = existing.id || null
     noteTitle.value = existing.title || ''
     noteText.value = existing.content || ''
+    noteColor.value = existing.color || hexColors.value.occupiedFill
   } else {
     openNoteId.value = null
     noteTitle.value = ''
     noteText.value = ''
+    noteColor.value = hexColors.value.occupiedFill
   }
 }
 
@@ -372,6 +487,7 @@ async function saveAndClose() {
     const payload = {
       title: noteTitle.value.trim(),
       content: noteText.value,
+      color: noteColor.value,
       ownerId: ownerId.value,
       vaultId: vaultId.value,
       hexKey: openKey.value
@@ -411,6 +527,7 @@ async function saveAndClose() {
       openNoteId.value = null
       noteTitle.value = ""
       noteText.value = ""
+      noteColor.value = hexColors.value.occupiedFill
       measure()
     } catch (err) {
       console.log(err)
@@ -469,6 +586,7 @@ async function deleteNote() {
     openNoteId.value = null
     noteTitle.value = ""
     noteText.value = ""
+    noteColor.value = hexColors.value.occupiedFill
     measure()
   } catch (err) {
     alert(err?.message || "Network/server error")
@@ -479,11 +597,50 @@ async function deleteNote() {
 
 
 
+async function shareNote() {
+  if (!openNoteId.value) {
+    alert("Save the note before sharing.")
+    return
+  }
+
+  const email = prompt("Share this note with (email):")
+  if (!email || !email.trim()) return
+
+  const token = localStorage.getItem("token") || ""
+  if (!token) {
+    alert("Missing token. Login again.")
+    return
+  }
+
+  try {
+    const res = await fetch("http://localhost:3000/shares", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({ noteId: openNoteId.value, toEmail: email.trim() })
+    })
+
+    const data = await res.json().catch(() => ({}))
+
+    if (!res.ok) {
+      alert(data?.error || "Failed to share note")
+      return
+    }
+
+    alert(`Note shared with ${email.trim()}`)
+  } catch (err) {
+    alert("Network/server error")
+  }
+}
+
 function backWithoutSave() {
   openKey.value = null
   openNoteId.value = null
   noteTitle.value = ''
   noteText.value = ''
+  noteColor.value = hexColors.value.occupiedFill
   measure()
 }
 
@@ -502,6 +659,7 @@ function openNoteById(noteId) {
   openKey.value = n.hexKey || null
   noteTitle.value = n.title || ""
   noteText.value = n.content || ""
+  noteColor.value = n.color || hexColors.value.occupiedFill
 }
 
 function onOpenNoteEvent(e) {
@@ -520,13 +678,6 @@ onMounted(() => {
   window.addEventListener('mouseup', onMouseUp)
   window.addEventListener("open-note", onOpenNoteEvent)
 
-
-  window.addEventListener("open-note", (e) => {
-  const id = Number(e?.detail?.noteId || 0)
-  if (id) openNoteById(id)
-})
-
-
   fetchNotes()
 })
 
@@ -534,9 +685,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', measure)
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
-  window.removeEventListener("open-note", openNoteById)
   window.removeEventListener("open-note", onOpenNoteEvent)
-
 })
 </script>
 
@@ -545,27 +694,37 @@ onUnmounted(() => {
     <div v-show="openKey" class="note-wrap">
       <NoteEditor
         :openKey="openKey"
+        :noteId="openNoteId"
         :title="noteTitle"
         :content="noteText"
+        :color="noteColor"
         :canSave="canSave"
         @update:title="noteTitle = $event"
         @update:content="noteText = $event"
+        @update:color="noteColor = $event"
         @save="saveAndClose"
         @back="backWithoutSave"
         @delete="deleteNote"
+        @share="shareNote"
       />
     </div>
 
     <div
       v-show="!openKey"
       class="graph-view"
+      :class="{ placing: placingNote }"
       @mousedown="onMouseDown"
       @wheel="onWheel"
       @dblclick="onDblClick"
     >
       <div class="controls">
         <button class="btn" @click="resetView">Reset</button>
-        <div class="hint">Drag · Wheel zoom (max 1) · Double click hex</div>
+        <button v-if="placingNote" class="btn" @click="cancelPlacing">Cancel placement</button>
+
+        <div class="hint">
+          <span v-if="placingNote">Placing "{{ placingNote.title }}" — click an empty cell</span>
+          <span v-else>Drag · Wheel zoom (max 1) · Double click hex</span>
+        </div>
       </div>
 
       <canvas ref="canvas" class="canvas"></canvas>
@@ -589,6 +748,10 @@ onUnmounted(() => {
 
 .graph-view:active {
   cursor: grabbing;
+}
+
+.graph-view.placing {
+  cursor: crosshair;
 }
 
 .canvas {
@@ -628,41 +791,4 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
 }
-
-
-.notes-list {
-  margin-top: 8px;
-  padding: 10px;
-  border-radius: 14px;
-  border: 2px solid rgba(165, 110, 16, 0.55);
-  background: rgba(240, 191, 85, 0.35);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.note-item {
-  width: 100%;
-  text-align: left;
-  border: 2px solid rgba(165, 110, 16, 0.55);
-  background: rgba(242, 211, 138, 0.55);
-  border-radius: 12px;
-  padding: 10px 12px;
-  cursor: pointer;
-  color: #2a1f0f;
-  font: inherit;
-}
-
-.note-item:hover {
-  background: rgba(201, 137, 30, 0.35);
-}
-
-.note-name {
-  font-weight: 900;
-  font-size: 15px;
-  line-height: 1.2;
-  word-break: break-word;
-}
-
-
 </style>

@@ -1,6 +1,7 @@
 <script setup>
 import { RouterView, useRoute, useRouter } from "vue-router"
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
+import { pendingPlacement } from "@/pendingPlacement"
 
 
 const route = useRoute()
@@ -30,6 +31,8 @@ const notesError = ref("")
 
 const inbox = ref([])
 const inboxError = ref("")
+const activeSharedNote = ref(null)
+const targetVaultId = ref(null)
 
 
 
@@ -46,6 +49,7 @@ function readUser() {
 async function onAuthChanged() {
   readUser()
   await loadVaults()
+  await loadInbox()
 }
 
 
@@ -151,7 +155,7 @@ async function loadInbox() {
 
   try {
     const data = await fetchAny(
-      `http://localhost:3000/inbox?userId=${user.value.id}`
+      `http://localhost:3000/shares/inbox?userId=${user.value.id}`
     )
     inbox.value = Array.isArray(data) ? data : []
   } catch (e) {
@@ -163,6 +167,37 @@ async function loadInbox() {
 function openNote(n) {
   if (!n) return
   window.dispatchEvent(new CustomEvent("open-note", { detail: { noteId: n.id } }))
+}
+
+function openSharedNote(s) {
+  activeSharedNote.value = s
+  targetVaultId.value = activeVaultId.value || vaults.value[0]?.id || null
+}
+
+function closeSharedNote() {
+  activeSharedNote.value = null
+}
+
+function placeSharedNoteInVault() {
+  if (!activeSharedNote.value) return
+
+  if (!targetVaultId.value) {
+    alert("Select a vault first.")
+    return
+  }
+
+  const note = activeSharedNote.value
+
+  pendingPlacement.value = {
+    title: note.title,
+    content: note.content,
+    color: note.color,
+    shareId: note.id,
+  }
+
+  activeVaultId.value = targetVaultId.value
+  activeSharedNote.value = null
+  router.push("/graph")
 }
 
 
@@ -233,20 +268,13 @@ onMounted(async () => {
 
   if (user.value) {
     await loadVaults()
-    //await loadInbox()
+    await loadInbox()
   }
 
 
   window.addEventListener("notehive-auth-changed", onAuthChanged)
   window.addEventListener("notes-changed", loadNotes)
-
-  //window.addEventListener("inbox-changed", loadInbox)
-
-  window.addEventListener("notehive-auth-changed", async () => {
-    readUser()
-    await loadVaults()
-    //await loadInbox()
-  })
+  window.addEventListener("inbox-changed", loadInbox)
 
 
 })
@@ -369,7 +397,7 @@ onUnmounted(() => {
             :key="s.id"
             class="inbox-item"
             type="button"
-            @click="$router.push('/graph'); openNote({ id: s.noteId })"
+            @click="openSharedNote(s)"
           >
             <div class="inbox-item-title">{{ s.title || "Untitled" }}</div>
             <div class="inbox-item-meta">
@@ -396,7 +424,34 @@ onUnmounted(() => {
       </div>
     </aside>
 
+    <div v-if="activeSharedNote" class="modal-overlay" @click.self="closeSharedNote">
+      <div
+        class="modal-card"
+        :style="activeSharedNote.color ? { borderLeftColor: activeSharedNote.color } : {}"
+      >
+        <div class="modal-top">
+          <div class="modal-title">{{ activeSharedNote.title || "Untitled" }}</div>
+          <button class="btn ghost" @click="closeSharedNote">Close</button>
+        </div>
 
+        <div class="modal-from">
+          From: {{ activeSharedNote.fromUsername || activeSharedNote.fromEmail || "unknown" }}
+        </div>
+
+        <div class="modal-content">{{ activeSharedNote.content || "(empty note)" }}</div>
+
+        <div class="modal-place">
+          <select v-model.number="targetVaultId" class="select">
+            <option v-if="vaults.length === 0" :value="null" disabled>No vaults yet</option>
+            <option v-for="v in vaults" :key="v.id" :value="v.id">{{ v.name }}</option>
+          </select>
+
+          <button class="btn" :disabled="!targetVaultId" @click="placeSharedNoteInVault">
+            Add to Vault
+          </button>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>
@@ -747,6 +802,74 @@ html, body, #app {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(42, 31, 15, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  overflow: auto;
+  background: #f0bf55;
+  border: 3px solid #a56e10;
+  border-left-width: 10px;
+  border-radius: 18px;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.modal-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-title {
+  font-size: 22px;
+  font-weight: 950;
+  word-break: break-word;
+}
+
+.modal-from {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 800;
+  opacity: 0.85;
+}
+
+.modal-content {
+  margin-top: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.modal-place {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 2px solid rgba(165, 110, 16, 0.4);
+  display: flex;
+  gap: 10px;
+}
+
+.modal-place .select {
+  flex: 1;
+}
+
+.btn.ghost {
+  background: transparent;
 }
 
 

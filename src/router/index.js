@@ -6,9 +6,7 @@ import PageProfile from '@/pages/Profile.vue'
 import PageGraph from '@/pages/Graph.vue'
 
 
-import PageAdmin from '@/pages/admin/Admin.vue'
 import PageAdminView from '@/pages/admin/AdminView.vue'
-import PageAdminUsers from '@/pages/admin/AdminUsers.vue'
 
 // actual routes
 const routes = [
@@ -32,23 +30,9 @@ const routes = [
     meta: { layout: 'app' }
   },
   {
-    path: '/admin',
-    name: 'admin',
-    component: PageAdmin,
-    meta: { layout: 'app' }
-  },
-  {
     path: '/admin/view',
     name: 'admin-view',
     component: PageAdminView,
-    meta: { layout: 'blank' }
-  },
-
-
-  {
-    path: '/admin/users',
-    name: 'admin-users',
-    component: PageAdminUsers,
     meta: { layout: 'blank' }
   }
 
